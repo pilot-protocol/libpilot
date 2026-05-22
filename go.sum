@@ -2,3 +2,17 @@ github.com/coder/websocket v1.8.14 h1:9L0p0iKiNOibykf283eHkKUHHrpG7f65OE3BhhO7v9
 github.com/coder/websocket v1.8.14/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/expr-lang/expr v1.17.8 h1:W1loDTT+0PQf5YteHSTpju2qfUfNoBt4yw9+wOEU9VM=
 github.com/expr-lang/expr v1.17.8/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
+github.com/pilot-protocol/common v0.1.0 h1:m8mZZATgeBiFoqhWXPnskw2u0lNkWxHp0IagZK35V1g=
+github.com/pilot-protocol/common v0.1.0/go.mod h1:4YZWHK5nhM+4RLmYTspLxxAFbyBII7yzQDAHq3Ul2ck=
+github.com/pilot-protocol/handshake v0.1.0 h1:TmqIglsimTynKtE5hLpCt/SZmmBYs8OCn4qn755fmew=
+github.com/pilot-protocol/handshake v0.1.0/go.mod h1:FIIMTgRcMIMEim/1d7F5f6YenJC+3xl53QMEmnnJY+0=
+github.com/pilot-protocol/policy v0.1.0 h1:Eh0CfCZDEX8UCkMPi2MrNrhCe8c15a/Bqf4eaKUhyis=
+github.com/pilot-protocol/policy v0.1.0/go.mod h1:IMVm7IQhgLtH/iXow2AWFuLl+sKrxJ4mGs4EKLoHop8=
+github.com/pilot-protocol/rendezvous v0.1.0 h1:vOBD7CnRY8uU8vma0Vfcr0aPSQ54qNuxppNUiljzk9Y=
+github.com/pilot-protocol/rendezvous v0.1.0/go.mod h1:g3/IYBykbU5m9jeprSCrmuoDpaqROO4Lu/+ecKVIF3A=
+github.com/pilot-protocol/runtime v0.1.0 h1:TyerRWKVN38WM2RAPR5bhCdY5cR7d3UYg5neUK0pdZk=
+github.com/pilot-protocol/runtime v0.1.0/go.mod h1:X1sImTG8xu6HkvKimu8Eq91HmDKQt6GHEWju7HxofEQ=
+github.com/pilot-protocol/skillinject v0.1.0 h1:gs912gqmxl0ifIvswefjx8BzPCmoBWS77mSp/RC1YEY=
+github.com/pilot-protocol/skillinject v0.1.0/go.mod h1:303GIB6j95ZhnoYeTlYzlBDhUbO01PB/6KGohm4DcJs=
+github.com/pilot-protocol/trustedagents v0.1.0 h1:rCX0IQxfZ84Q4dSgw01WJgjHUODRnI3iAon1t+NuFGE=
+github.com/pilot-protocol/trustedagents v0.1.0/go.mod h1:uVySmuMPb6N7AOCnvLHN2I9C9ggqEpfBmAZwVuP5Xaw=
