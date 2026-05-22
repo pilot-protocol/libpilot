@@ -2,3 +2,6 @@ libpilot.dylib
 libpilot.so
 libpilot.dll
 libpilot.h
+coverage.out
+*.test
+/libpilot
