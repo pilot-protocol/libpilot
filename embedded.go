@@ -35,7 +35,7 @@ import (
 	"time"
 
 	"github.com/TeoSlayer/pilotprotocol/pkg/daemon"
-	"github.com/TeoSlayer/pilotprotocol/pkg/driver"
+	"github.com/pilot-protocol/common/driver"
 
 	"github.com/pilot-protocol/handshake"
 	"github.com/pilot-protocol/policy"
