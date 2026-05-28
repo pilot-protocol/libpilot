@@ -1056,6 +1056,137 @@ static void test_mock_disconnect(void) {
   mock_close(h);
 }
 
+// PilotRecvFrom — exercises the datagram-receive happy path.
+//
+// The mock daemon reflects every cmdSendTo back to the same client as
+// a cmdRecvFrom (loopback semantics). We send a datagram, then call
+// PilotRecvFrom and verify the JSON envelope contains our payload and
+// the synthetic src_port=0xDEAD that the mock injects.
+static void test_mock_recv_from(void) {
+  uint64_t h = mock_connect_or_fail("mock_recv_from");
+  if (!h) return;
+
+  char addr[] = "1:0001.0002.0003:80";
+  char data[] = "loopback-dg";
+  char *send_err = PilotSendTo(h, addr, data, (int)strlen(data));
+  if (send_err != NULL) {
+    FAIL("mock_recv_from", send_err);
+    free_c_string(send_err);
+    mock_close(h);
+    return;
+  }
+
+  // The reflected cmdRecvFrom is server-pushed; it lands on the driver's
+  // dgCh asynchronously. PilotRecvFrom blocks on that channel.
+  char *res = PilotRecvFrom(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_recv_from", res ? res : "null");
+    if (res) free_c_string(res);
+    mock_close(h);
+    return;
+  }
+
+  // Payload bytes are base64 over JSON; rather than decoding, just check
+  // for fields we know the mock fills in. src_port=0xDEAD=57005.
+  if (strstr(res, "\"src_port\":57005") == NULL) {
+    FAIL("mock_recv_from", "expected src_port=57005 (0xDEAD)");
+    printf("    got: %s\n", res);
+    free_c_string(res);
+    mock_close(h);
+    return;
+  }
+  if (strstr(res, "\"dst_port\":80") == NULL) {
+    FAIL("mock_recv_from", "expected dst_port=80 echoed back");
+    printf("    got: %s\n", res);
+    free_c_string(res);
+    mock_close(h);
+    return;
+  }
+  PASS("mock_recv_from");
+  free_c_string(res);
+  mock_close(h);
+}
+
+// PilotListenerAccept — exercises the listener-accept happy path with
+// TWO concurrent client handles against the same mock daemon.
+//
+// Handle A: PilotListen(port=42017). The mock records the bind in its
+//           process-wide listenerRegistry.
+// Handle B: PilotDial("...:42017"). The mock replies cmdDialOK to B AND
+//           pushes a cmdAccept frame onto A's socket.
+// Handle A: PilotListenerAccept returns a new Conn — the accepted side.
+//
+// This is the only path that actually flows a cmdAccept through the
+// driver's readLoop into a Listener's per-port channel — every other
+// PilotListenerAccept callsite in this harness hits the error branch.
+static void test_mock_listener_accept(void) {
+  const uint16_t port = 42017;
+
+  uint64_t a = mock_connect_or_fail("mock_listener_accept_listen");
+  if (!a) return;
+  uint64_t b = mock_connect_or_fail("mock_listener_accept_dial");
+  if (!b) {
+    mock_close(a);
+    return;
+  }
+
+  struct PilotListen_return ln = PilotListen(a, port);
+  if (ln.r0 == 0 || (ln.r1 && has_error(ln.r1))) {
+    FAIL("mock_listener_accept", ln.r1 ? ln.r1 : "listen failed");
+    if (ln.r1) free_c_string(ln.r1);
+    mock_close(a);
+    mock_close(b);
+    return;
+  }
+  if (ln.r1) free_c_string(ln.r1);
+
+  // Build the dial addr: "1:0001.0002.0003:42017". The mock parses the
+  // 6-byte addr + 2-byte port from the wire — the text form is only
+  // used by libpilot to construct the bytes.
+  char dial_addr[64];
+  snprintf(dial_addr, sizeof(dial_addr), "1:0001.0002.0003:%u",
+           (unsigned)port);
+  struct PilotDial_return d = PilotDial(b, dial_addr);
+  if (d.r0 == 0 || (d.r1 && has_error(d.r1))) {
+    FAIL("mock_listener_accept", d.r1 ? d.r1 : "dial failed");
+    if (d.r1) free_c_string(d.r1);
+    char *lc = PilotListenerClose(ln.r0);
+    if (lc) free_c_string(lc);
+    mock_close(a);
+    mock_close(b);
+    return;
+  }
+  if (d.r1) free_c_string(d.r1);
+
+  // The dial triggers the mock to push cmdAccept onto handle A's socket.
+  // PilotListenerAccept blocks until that frame lands.
+  struct PilotListenerAccept_return acc = PilotListenerAccept(ln.r0);
+  if (acc.r0 == 0 || (acc.r1 && has_error(acc.r1))) {
+    FAIL("mock_listener_accept", acc.r1 ? acc.r1 : "accept failed");
+    if (acc.r1) free_c_string(acc.r1);
+    char *cc = PilotConnClose(d.r0);
+    if (cc) free_c_string(cc);
+    char *lc = PilotListenerClose(ln.r0);
+    if (lc) free_c_string(lc);
+    mock_close(a);
+    mock_close(b);
+    return;
+  }
+  if (acc.r1) free_c_string(acc.r1);
+  PASS("mock_listener_accept");
+
+  // Tear down the accepted conn + the dialer conn + the listener.
+  char *ac = PilotConnClose(acc.r0);
+  if (ac) free_c_string(ac);
+  char *dc = PilotConnClose(d.r0);
+  if (dc) free_c_string(dc);
+  char *lc = PilotListenerClose(ln.r0);
+  if (lc) free_c_string(lc);
+
+  mock_close(a);
+  mock_close(b);
+}
+
 // ---------------------------------------------------------------------------
 // Run all
 // ---------------------------------------------------------------------------
@@ -1138,6 +1269,8 @@ int main(void) {
     test_mock_network_invite_polls();
     test_mock_policy();
     test_mock_member_tags();
+    test_mock_recv_from();
+    test_mock_listener_accept();
 
     stop_mock_daemon();
   } else {
