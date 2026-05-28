@@ -15,8 +15,8 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/TeoSlayer/pilotprotocol/pkg/driver"
-	"github.com/TeoSlayer/pilotprotocol/pkg/protocol"
+	"github.com/pilot-protocol/common/driver"
+	"github.com/pilot-protocol/common/protocol"
 )
 
 // ---------- Handle table ----------
