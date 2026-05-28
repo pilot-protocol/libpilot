@@ -13,7 +13,7 @@ require (
 require (
 	github.com/coder/websocket v1.8.14 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/pilot-protocol/common v0.1.0 // indirect
+	github.com/pilot-protocol/common v0.2.0 // indirect
 	github.com/pilot-protocol/trustedagents v0.1.0 // indirect
 )
 
