@@ -22,9 +22,16 @@
 
 #include "../libpilot.h"
 #include <assert.h>
+#include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <time.h>
+#include <unistd.h>
 
 static int pass_count = 0;
 static int fail_count = 0;
@@ -435,6 +442,621 @@ static void test_free_null(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Mock-daemon-backed tests
+//
+// These spawn ./mockdaemon-bin (built by `make mock-daemon`) as a child
+// process, point it at a temp Unix socket, and drive every //export
+// entry point that needs a connected handle.
+//
+// Lifecycle: fork+exec the binary, wait until the socket file appears,
+// run the tests, then SIGTERM the child. The Makefile guarantees the
+// binary is built before `make run`.
+// ---------------------------------------------------------------------------
+
+static pid_t mock_pid = 0;
+static char mock_socket_path[256] = {0};
+
+// wait_for_socket polls up to ~2 seconds for the Unix socket to appear.
+static int wait_for_socket(const char *path) {
+  for (int i = 0; i < 200; i++) {
+    struct stat st;
+    if (stat(path, &st) == 0) return 1;
+    struct timespec ts = {0, 10 * 1000 * 1000}; // 10 ms
+    nanosleep(&ts, NULL);
+  }
+  return 0;
+}
+
+// start_mock_daemon forks the mock binary and waits for it to bind.
+// Returns 1 on success, 0 on failure.
+static int start_mock_daemon(void) {
+  // Build a temp socket path. Avoid TMPDIR weirdness on darwin (long
+  // /var/folders paths can exceed sun_path's 104-byte limit).
+  snprintf(mock_socket_path, sizeof(mock_socket_path),
+           "/tmp/libpilot-mock-%d.sock", (int)getpid());
+
+  // Best-effort unlink of any stale socket.
+  unlink(mock_socket_path);
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    fprintf(stderr, "fork: %s\n", strerror(errno));
+    return 0;
+  }
+  if (pid == 0) {
+    // Child: exec the mock binary.
+    execl("./mockdaemon-bin", "mockdaemon-bin",
+          "-socket", mock_socket_path, (char *)NULL);
+    // execl only returns on failure.
+    fprintf(stderr, "execl mockdaemon-bin: %s\n", strerror(errno));
+    _exit(127);
+  }
+
+  mock_pid = pid;
+  if (!wait_for_socket(mock_socket_path)) {
+    fprintf(stderr, "mock daemon did not bind socket %s within 2s\n",
+            mock_socket_path);
+    kill(pid, SIGTERM);
+    waitpid(pid, NULL, 0);
+    mock_pid = 0;
+    return 0;
+  }
+  return 1;
+}
+
+static void stop_mock_daemon(void) {
+  if (mock_pid > 0) {
+    kill(mock_pid, SIGTERM);
+    int status = 0;
+    waitpid(mock_pid, &status, 0);
+    mock_pid = 0;
+  }
+  if (mock_socket_path[0] != '\0') {
+    unlink(mock_socket_path);
+  }
+}
+
+// Each mock-daemon-backed test connects a fresh handle, runs one
+// command, and disconnects. Keeps tests independent and lets the
+// coverage profile show each export was actually reached.
+
+static uint64_t mock_connect_or_fail(const char *test_name) {
+  struct PilotConnect_return r = PilotConnect(mock_socket_path);
+  if (r.r0 == 0) {
+    FAIL(test_name, "PilotConnect against mock daemon failed");
+    if (r.r1) {
+      printf("    err: %s\n", r.r1);
+      free_c_string(r.r1);
+    }
+    return 0;
+  }
+  if (r.r1) free_c_string(r.r1);
+  return r.r0;
+}
+
+static void mock_close(uint64_t h) {
+  char *err = PilotClose(h);
+  if (err) free_c_string(err);
+}
+
+// has_no_error returns 1 if the JSON looks like a success envelope.
+static int has_no_error(const char *json) {
+  return json != NULL && !has_error(json);
+}
+
+static void test_mock_connect_close(void) {
+  uint64_t h = mock_connect_or_fail("mock_connect_close");
+  if (!h) return;
+  mock_close(h);
+  PASS("mock_connect_close");
+}
+
+static void test_mock_info(void) {
+  uint64_t h = mock_connect_or_fail("mock_info");
+  if (!h) return;
+  char *res = PilotInfo(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_info", res ? res : "null");
+  } else if (strstr(res, "mock-daemon") == NULL) {
+    FAIL("mock_info", "expected canned hostname");
+  } else {
+    PASS("mock_info");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_health(void) {
+  uint64_t h = mock_connect_or_fail("mock_health");
+  if (!h) return;
+  char *res = PilotHealth(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_health", res ? res : "null");
+  } else {
+    PASS("mock_health");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_listen(void) {
+  uint64_t h = mock_connect_or_fail("mock_listen");
+  if (!h) return;
+  struct PilotListen_return r = PilotListen(h, 31337);
+  if (r.r0 == 0 || (r.r1 && has_error(r.r1))) {
+    FAIL("mock_listen", r.r1 ? r.r1 : "no listener handle");
+  } else {
+    PASS("mock_listen");
+    char *cerr = PilotListenerClose(r.r0);
+    if (cerr) free_c_string(cerr);
+  }
+  if (r.r1) free_c_string(r.r1);
+  mock_close(h);
+}
+
+static void test_mock_dial_and_conn_io(void) {
+  uint64_t h = mock_connect_or_fail("mock_dial_io");
+  if (!h) return;
+
+  // The mock accepts any well-formed Pilot address. Format:
+  // "N:NNNN.HHHH.LLLL:PORT".
+  char addr[] = "1:0001.0002.0003:80";
+  struct PilotDial_return d = PilotDial(h, addr);
+  if (d.r0 == 0 || (d.r1 && has_error(d.r1))) {
+    FAIL("mock_dial", d.r1 ? d.r1 : "no conn handle");
+    if (d.r1) free_c_string(d.r1);
+    mock_close(h);
+    return;
+  }
+  PASS("mock_dial");
+  if (d.r1) free_c_string(d.r1);
+
+  // Write some bytes; the mock echoes via server-pushed CmdRecv.
+  const char payload[] = "hello mock";
+  struct PilotConnWrite_return w =
+      PilotConnWrite(d.r0, (void *)payload, (int)strlen(payload));
+  if (w.r1 && has_error(w.r1)) {
+    FAIL("mock_conn_write", w.r1);
+    free_c_string(w.r1);
+  } else if (w.r0 != (int)strlen(payload)) {
+    FAIL("mock_conn_write", "short write");
+  } else {
+    PASS("mock_conn_write");
+  }
+  if (w.r1) free_c_string(w.r1);
+
+  // Read the echo back.
+  struct PilotConnRead_return rd = PilotConnRead(d.r0, 64);
+  if (rd.r2 && has_error(rd.r2)) {
+    FAIL("mock_conn_read", rd.r2);
+    free_c_string(rd.r2);
+  } else if (rd.r0 != (int)strlen(payload) || rd.r1 == NULL ||
+             memcmp(rd.r1, payload, strlen(payload)) != 0) {
+    FAIL("mock_conn_read", "echo mismatch");
+    if (rd.r1) free_c_string(rd.r1);
+  } else {
+    PASS("mock_conn_read");
+    free_c_string(rd.r1);
+  }
+
+  char *cerr = PilotConnClose(d.r0);
+  if (cerr) {
+    FAIL("mock_conn_close", cerr);
+    free_c_string(cerr);
+  } else {
+    PASS("mock_conn_close");
+  }
+
+  mock_close(h);
+}
+
+static void test_mock_trusted_peers(void) {
+  uint64_t h = mock_connect_or_fail("mock_trusted_peers");
+  if (!h) return;
+  char *res = PilotTrustedPeers(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_trusted_peers", res ? res : "null");
+  } else {
+    PASS("mock_trusted_peers");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_pending_handshakes(void) {
+  uint64_t h = mock_connect_or_fail("mock_pending_handshakes");
+  if (!h) return;
+  char *res = PilotPendingHandshakes(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_pending_handshakes", res ? res : "null");
+  } else {
+    PASS("mock_pending_handshakes");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_handshake_send(void) {
+  uint64_t h = mock_connect_or_fail("mock_handshake_send");
+  if (!h) return;
+  char just[] = "just-for-coverage";
+  char *res = PilotHandshake(h, 42, just);
+  if (!has_no_error(res)) {
+    FAIL("mock_handshake_send", res ? res : "null");
+  } else {
+    PASS("mock_handshake_send");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_approve_reject_revoke(void) {
+  uint64_t h = mock_connect_or_fail("mock_approve_reject_revoke");
+  if (!h) return;
+
+  char *a = PilotApproveHandshake(h, 7);
+  if (!has_no_error(a)) {
+    FAIL("mock_approve", a ? a : "null");
+  } else {
+    PASS("mock_approve");
+  }
+  if (a) free_c_string(a);
+
+  char reason[] = "no thanks";
+  char *r = PilotRejectHandshake(h, 7, reason);
+  if (!has_no_error(r)) {
+    FAIL("mock_reject", r ? r : "null");
+  } else {
+    PASS("mock_reject");
+  }
+  if (r) free_c_string(r);
+
+  char *rv = PilotRevokeTrust(h, 7);
+  if (!has_no_error(rv)) {
+    FAIL("mock_revoke", rv ? rv : "null");
+  } else {
+    PASS("mock_revoke");
+  }
+  if (rv) free_c_string(rv);
+
+  mock_close(h);
+}
+
+static void test_mock_resolve_set_hostname(void) {
+  uint64_t h = mock_connect_or_fail("mock_resolve_set_hostname");
+  if (!h) return;
+
+  char host[] = "alice";
+  char *r = PilotResolveHostname(h, host);
+  if (!has_no_error(r)) {
+    FAIL("mock_resolve_hostname", r ? r : "null");
+  } else {
+    PASS("mock_resolve_hostname");
+  }
+  if (r) free_c_string(r);
+
+  char *s = PilotSetHostname(h, host);
+  if (!has_no_error(s)) {
+    FAIL("mock_set_hostname", s ? s : "null");
+  } else {
+    PASS("mock_set_hostname");
+  }
+  if (s) free_c_string(s);
+
+  mock_close(h);
+}
+
+static void test_mock_visibility_deregister(void) {
+  uint64_t h = mock_connect_or_fail("mock_visibility");
+  if (!h) return;
+
+  char *v = PilotSetVisibility(h, 1);
+  if (!has_no_error(v)) {
+    FAIL("mock_set_visibility", v ? v : "null");
+  } else {
+    PASS("mock_set_visibility");
+  }
+  if (v) free_c_string(v);
+
+  char *d = PilotDeregister(h);
+  if (!has_no_error(d)) {
+    FAIL("mock_deregister", d ? d : "null");
+  } else {
+    PASS("mock_deregister");
+  }
+  if (d) free_c_string(d);
+
+  mock_close(h);
+}
+
+static void test_mock_set_tags_webhook(void) {
+  uint64_t h = mock_connect_or_fail("mock_tags_webhook");
+  if (!h) return;
+
+  char tags[] = "[\"alpha\",\"beta\"]";
+  char *t = PilotSetTags(h, tags);
+  if (!has_no_error(t)) {
+    FAIL("mock_set_tags", t ? t : "null");
+  } else {
+    PASS("mock_set_tags");
+  }
+  if (t) free_c_string(t);
+
+  char url[] = "https://example.test/webhook";
+  char *w = PilotSetWebhook(h, url);
+  if (!has_no_error(w)) {
+    FAIL("mock_set_webhook", w ? w : "null");
+  } else {
+    PASS("mock_set_webhook");
+  }
+  if (w) free_c_string(w);
+
+  mock_close(h);
+}
+
+static void test_mock_network_list(void) {
+  uint64_t h = mock_connect_or_fail("mock_network_list");
+  if (!h) return;
+  char *res = PilotNetworkList(h);
+  if (!has_no_error(res)) {
+    FAIL("mock_network_list", res ? res : "null");
+  } else {
+    PASS("mock_network_list");
+  }
+  if (res) free_c_string(res);
+  mock_close(h);
+}
+
+static void test_mock_network_join_leave_members(void) {
+  uint64_t h = mock_connect_or_fail("mock_network_jlm");
+  if (!h) return;
+
+  char token[] = "";
+  char *j = PilotNetworkJoin(h, 1, token);
+  if (!has_no_error(j)) {
+    FAIL("mock_network_join", j ? j : "null");
+  } else {
+    PASS("mock_network_join");
+  }
+  if (j) free_c_string(j);
+
+  char *m = PilotNetworkMembers(h, 1);
+  if (!has_no_error(m)) {
+    FAIL("mock_network_members", m ? m : "null");
+  } else {
+    PASS("mock_network_members");
+  }
+  if (m) free_c_string(m);
+
+  char *l = PilotNetworkLeave(h, 1);
+  if (!has_no_error(l)) {
+    FAIL("mock_network_leave", l ? l : "null");
+  } else {
+    PASS("mock_network_leave");
+  }
+  if (l) free_c_string(l);
+
+  mock_close(h);
+}
+
+static void test_mock_managed(void) {
+  uint64_t h = mock_connect_or_fail("mock_managed");
+  if (!h) return;
+
+  char *s = PilotManagedStatus(h, 1);
+  if (!has_no_error(s)) {
+    FAIL("mock_managed_status", s ? s : "null");
+  } else {
+    PASS("mock_managed_status");
+  }
+  if (s) free_c_string(s);
+
+  char *f = PilotManagedForceCycle(h, 1);
+  if (!has_no_error(f)) {
+    FAIL("mock_managed_force_cycle", f ? f : "null");
+  } else {
+    PASS("mock_managed_force_cycle");
+  }
+  if (f) free_c_string(f);
+
+  char *r = PilotManagedReconcile(h, 1);
+  if (!has_no_error(r)) {
+    FAIL("mock_managed_reconcile", r ? r : "null");
+  } else {
+    PASS("mock_managed_reconcile");
+  }
+  if (r) free_c_string(r);
+
+  mock_close(h);
+}
+
+static void test_mock_rotate_key(void) {
+  uint64_t h = mock_connect_or_fail("mock_rotate_key");
+  if (!h) return;
+  char *r = PilotRotateKey(h);
+  if (!has_no_error(r)) {
+    FAIL("mock_rotate_key", r ? r : "null");
+  } else {
+    PASS("mock_rotate_key");
+  }
+  if (r) free_c_string(r);
+  mock_close(h);
+}
+
+static void test_mock_broadcast(void) {
+  uint64_t h = mock_connect_or_fail("mock_broadcast");
+  if (!h) return;
+  char tok[] = "admin-token";
+  char payload[] = "broadcast-payload";
+  char *r = PilotBroadcast(h, 1, 80, payload, (int)strlen(payload), tok);
+  if (!has_no_error(r)) {
+    FAIL("mock_broadcast", r ? r : "null");
+  } else {
+    PASS("mock_broadcast");
+  }
+  if (r) free_c_string(r);
+  mock_close(h);
+}
+
+static void test_mock_send_to(void) {
+  uint64_t h = mock_connect_or_fail("mock_send_to");
+  if (!h) return;
+  char addr[] = "1:0001.0002.0003:80";
+  char data[] = "datagram";
+  char *r = PilotSendTo(h, addr, data, (int)strlen(data));
+  if (r != NULL) {
+    FAIL("mock_send_to", r);
+    free_c_string(r);
+  } else {
+    PASS("mock_send_to");
+  }
+  mock_close(h);
+}
+
+static void test_mock_wait_for_trust(void) {
+  uint64_t h = mock_connect_or_fail("mock_wait_for_trust");
+  if (!h) return;
+  // Use 0 ms timeout — mock replies immediately, regardless.
+  char *r = PilotWaitForTrust(h, 42, 0);
+  if (!has_no_error(r)) {
+    FAIL("mock_wait_for_trust", r ? r : "null");
+  } else {
+    PASS("mock_wait_for_trust");
+  }
+  if (r) free_c_string(r);
+  mock_close(h);
+}
+
+static void test_mock_conn_set_read_deadline(void) {
+  uint64_t h = mock_connect_or_fail("mock_set_read_deadline");
+  if (!h) return;
+  char addr[] = "1:0001.0002.0003:80";
+  struct PilotDial_return d = PilotDial(h, addr);
+  if (d.r0 == 0) {
+    FAIL("mock_set_read_deadline", "dial failed");
+    if (d.r1) free_c_string(d.r1);
+    mock_close(h);
+    return;
+  }
+  if (d.r1) free_c_string(d.r1);
+
+  // Clear deadline (0) then set a far-future one.
+  char *e1 = PilotConnSetReadDeadline(d.r0, 0);
+  if (e1) {
+    FAIL("mock_set_read_deadline_clear", e1);
+    free_c_string(e1);
+  } else {
+    PASS("mock_set_read_deadline_clear");
+  }
+
+  char *e2 = PilotConnSetReadDeadline(d.r0, (int64_t)1ULL << 60);
+  if (e2) {
+    FAIL("mock_set_read_deadline_future", e2);
+    free_c_string(e2);
+  } else {
+    PASS("mock_set_read_deadline_future");
+  }
+
+  char *cerr = PilotConnClose(d.r0);
+  if (cerr) free_c_string(cerr);
+  mock_close(h);
+}
+
+static void test_mock_network_invite_polls(void) {
+  uint64_t h = mock_connect_or_fail("mock_network_invite_polls");
+  if (!h) return;
+
+  char *i = PilotNetworkInvite(h, 1, 0xCAFE);
+  if (!has_no_error(i)) {
+    FAIL("mock_network_invite", i ? i : "null");
+  } else {
+    PASS("mock_network_invite");
+  }
+  if (i) free_c_string(i);
+
+  char *p = PilotNetworkPollInvites(h);
+  if (!has_no_error(p)) {
+    FAIL("mock_network_poll_invites", p ? p : "null");
+  } else {
+    PASS("mock_network_poll_invites");
+  }
+  if (p) free_c_string(p);
+
+  char *r = PilotNetworkRespondInvite(h, 1, 1);
+  if (!has_no_error(r)) {
+    FAIL("mock_network_respond_invite", r ? r : "null");
+  } else {
+    PASS("mock_network_respond_invite");
+  }
+  if (r) free_c_string(r);
+
+  mock_close(h);
+}
+
+static void test_mock_policy(void) {
+  uint64_t h = mock_connect_or_fail("mock_policy");
+  if (!h) return;
+
+  char *g = PilotPolicyGet(h, 1);
+  if (!has_no_error(g)) {
+    FAIL("mock_policy_get", g ? g : "null");
+  } else {
+    PASS("mock_policy_get");
+  }
+  if (g) free_c_string(g);
+
+  char policy[] = "{\"rules\":[]}";
+  char *s = PilotPolicySet(h, 1, policy);
+  if (!has_no_error(s)) {
+    FAIL("mock_policy_set", s ? s : "null");
+  } else {
+    PASS("mock_policy_set");
+  }
+  if (s) free_c_string(s);
+
+  mock_close(h);
+}
+
+static void test_mock_member_tags(void) {
+  uint64_t h = mock_connect_or_fail("mock_member_tags");
+  if (!h) return;
+
+  char *g = PilotMemberTagsGet(h, 1, 0xBEEF);
+  if (!has_no_error(g)) {
+    FAIL("mock_member_tags_get", g ? g : "null");
+  } else {
+    PASS("mock_member_tags_get");
+  }
+  if (g) free_c_string(g);
+
+  char tags[] = "[\"role:worker\"]";
+  char *s = PilotMemberTagsSet(h, 1, 0xBEEF, tags);
+  if (!has_no_error(s)) {
+    FAIL("mock_member_tags_set", s ? s : "null");
+  } else {
+    PASS("mock_member_tags_set");
+  }
+  if (s) free_c_string(s);
+
+  mock_close(h);
+}
+
+static void test_mock_disconnect(void) {
+  uint64_t h = mock_connect_or_fail("mock_disconnect");
+  if (!h) return;
+  // Disconnect by ID is fire-and-forget on the wire — error only on
+  // bad handle.
+  char *r = PilotDisconnect(h, 12345);
+  if (r != NULL) {
+    FAIL("mock_disconnect", r);
+    free_c_string(r);
+  } else {
+    PASS("mock_disconnect");
+  }
+  mock_close(h);
+}
+
+// ---------------------------------------------------------------------------
 // Run all
 // ---------------------------------------------------------------------------
 
@@ -484,6 +1106,45 @@ int main(void) {
 
   // Free
   test_free_null();
+
+  // ----- Mock-daemon-backed tests -----
+  // Spawn the mock binary in a child process, then drive every
+  // //export endpoint that needs a connected handle.
+  if (start_mock_daemon()) {
+    printf("\n[mock daemon] pid=%d socket=%s\n", (int)mock_pid,
+           mock_socket_path);
+
+    test_mock_connect_close();
+    test_mock_info();
+    test_mock_health();
+    test_mock_listen();
+    test_mock_dial_and_conn_io();
+    test_mock_trusted_peers();
+    test_mock_pending_handshakes();
+    test_mock_handshake_send();
+    test_mock_approve_reject_revoke();
+    test_mock_resolve_set_hostname();
+    test_mock_visibility_deregister();
+    test_mock_set_tags_webhook();
+    test_mock_network_list();
+    test_mock_network_join_leave_members();
+    test_mock_managed();
+    test_mock_rotate_key();
+    test_mock_broadcast();
+    test_mock_send_to();
+    test_mock_disconnect();
+    test_mock_wait_for_trust();
+    test_mock_conn_set_read_deadline();
+    test_mock_network_invite_polls();
+    test_mock_policy();
+    test_mock_member_tags();
+
+    stop_mock_daemon();
+  } else {
+    fail_count++;
+    printf("  FAIL mock_daemon_startup: could not spawn mockdaemon-bin "
+           "(run `make mock-daemon` first)\n");
+  }
 
   printf("===============================\n");
   printf("PASS: %d\n", pass_count);

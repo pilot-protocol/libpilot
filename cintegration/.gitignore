@@ -2,3 +2,4 @@ harness
 harness.dSYM/
 covdata/
 coverage.out
+mockdaemon-bin

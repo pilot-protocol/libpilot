@@ -20,10 +20,11 @@ endif
 LIB := ../libpilot.$(EXT)
 COVDIR := ./covdata
 HARNESS := harness
+MOCK := mockdaemon-bin
 
-.PHONY: build run cover clean
+.PHONY: build run cover clean mock-daemon
 
-build: $(LIB) $(HARNESS)
+build: $(LIB) $(HARNESS) mock-daemon
 
 $(LIB):
 	cd .. && go build -tags coverflush -cover -covermode=atomic -coverpkg=. -buildmode=c-shared -o libpilot.$(EXT) .
@@ -35,7 +36,15 @@ endif
 $(HARNESS): harness.c $(LIB)
 	$(CC) -Wall -Wextra -O0 -g -o $(HARNESS) harness.c -L.. -lpilot $(RPATH_FLAG)
 
-run: $(HARNESS)
+# mock-daemon builds the standalone Go binary the harness spawns to
+# satisfy //export entry points that need a real Unix socket on the
+# other end. See mockdaemon/main.go.
+mock-daemon: $(MOCK)
+
+$(MOCK): mockdaemon/main.go mockdaemon/go.mod
+	cd mockdaemon && go build -o ../$(MOCK) .
+
+run: $(HARNESS) $(MOCK)
 	mkdir -p $(COVDIR)
 ifeq ($(UNAME_S),Darwin)
 	DYLD_LIBRARY_PATH=.. GOCOVERDIR=$(COVDIR) ./$(HARNESS)
@@ -51,4 +60,4 @@ cover: run
 
 clean:
 	rm -rf $(COVDIR) $(HARNESS) coverage.out
-	rm -f ../libpilot.$(EXT) ../libpilot.h
+	rm -f ../libpilot.$(EXT) ../libpilot.h $(MOCK)
