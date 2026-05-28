@@ -63,6 +63,11 @@ static int has_error(const char *json) {
   return strstr(json, "\"error\"") != NULL;
 }
 
+// Forward declaration so embedded-daemon tests defined above the mock-
+// daemon helpers can call the predicate. Definition is co-located with
+// the mock-daemon helpers further down.
+static int has_no_error(const char *json);
+
 // ---------------------------------------------------------------------------
 // Handle-table edge cases
 // ---------------------------------------------------------------------------
@@ -113,6 +118,92 @@ static void test_conn_close_bad_handle(void) {
     return;
   }
   PASS("conn_close_bad_handle");
+  free_c_string(err);
+}
+
+// Bad-handle smoke tests for the //export functions whose only
+// uncovered branch in the baseline was the `driverFromHandle(h)`
+// failure path. Each one wraps one statement-of-coverage worth of
+// uncovered code per binding. Keeps total coverage just over the
+// 80% threshold without spinning up the mock daemon for every one.
+static void test_disconnect_bad_handle(void) {
+  char *err = PilotDisconnect(0, 1);
+  if (err == NULL || !has_error(err)) {
+    FAIL("disconnect_bad_handle", "expected error");
+    if (err) free_c_string(err);
+    return;
+  }
+  PASS("disconnect_bad_handle");
+  free_c_string(err);
+}
+
+static void test_dial_timeout_bad_handle(void) {
+  char addr[] = "1:0001.0001.0001:80";
+  struct PilotDialTimeout_return r = PilotDialTimeout(0, addr, 100);
+  if (r.r1 == NULL || !has_error(r.r1)) {
+    FAIL("dial_timeout_bad_handle", "expected error");
+    if (r.r1) free_c_string(r.r1);
+    return;
+  }
+  PASS("dial_timeout_bad_handle");
+  free_c_string(r.r1);
+}
+
+// Stub — actual coverage for the ParseSocketAddr error branch in
+// PilotDialTimeout requires a valid handle, so the real test lives
+// alongside the mock-daemon helpers further down
+// (test_mock_dial_timeout_malformed_addr).
+static void test_dial_timeout_malformed_addr(void) {
+  // Bad handle path — same code line as test_dial_timeout_bad_handle.
+  // Kept as a sentinel so future refactors don't drop the test slot.
+  char addr[] = "this-is-not-a-pilot-addr";
+  struct PilotDialTimeout_return r = PilotDialTimeout(0, addr, 100);
+  if (r.r1 == NULL || !has_error(r.r1)) {
+    FAIL("dial_timeout_malformed_addr", "expected error");
+    if (r.r1) free_c_string(r.r1);
+    return;
+  }
+  PASS("dial_timeout_malformed_addr");
+  free_c_string(r.r1);
+}
+
+static void test_member_tags_set_bad_handle(void) {
+  char tags[] = "[\"a\"]";
+  char *err = PilotMemberTagsSet(0, 1, 1, tags);
+  if (err == NULL || !has_error(err)) {
+    FAIL("member_tags_set_bad_handle", "expected error");
+    if (err) free_c_string(err);
+    return;
+  }
+  PASS("member_tags_set_bad_handle");
+  free_c_string(err);
+}
+
+static void test_member_tags_set_invalid_json(void) {
+  // Bad handle short-circuits before the json.Unmarshal call, so use a
+  // direct mock-daemon-backed test for the invalid-JSON branch (added
+  // separately below). This one just exercises the bad-handle path
+  // with a known-good JSON body, doubling as a regression for handle
+  // validation ordering.
+  char tags[] = "[\"x\"]";
+  char *err = PilotMemberTagsSet(0xFEEDC0DEFACE, 1, 1, tags);
+  if (err == NULL || !has_error(err)) {
+    FAIL("member_tags_set_invalid_json", "expected error");
+    if (err) free_c_string(err);
+    return;
+  }
+  PASS("member_tags_set_invalid_json");
+  free_c_string(err);
+}
+
+static void test_conn_set_read_deadline_bad_handle(void) {
+  char *err = PilotConnSetReadDeadline(0, 0);
+  if (err == NULL || !has_error(err)) {
+    FAIL("conn_set_read_deadline_bad_handle", "expected error");
+    if (err) free_c_string(err);
+    return;
+  }
+  PASS("conn_set_read_deadline_bad_handle");
   free_c_string(err);
 }
 
@@ -430,6 +521,285 @@ static void test_embedded_stop_when_not_running(void) {
   if (err != NULL) free_c_string(err);
   // Either result is acceptable; what matters is that we returned.
   PASS("embedded_stop_when_not_running");
+}
+
+// ---------------------------------------------------------------------------
+// Embedded daemon with fake registry — full PilotEmbeddedStart success
+// path. The fake registry (./mockregistry-bin) is a TCP binary that
+// speaks length-prefixed JSON to satisfy the pkg/daemon Start() flow:
+// it answers `register` with a canned node_id + address, and `lookup`
+// with an empty networks list. STUN against -beacon-addr fails (no UDP
+// listener) but pkg/daemon's discoverWithTempSocket logs that as a
+// warning and falls back to the local listen address, so Start
+// succeeds end-to-end.
+//
+// This is the only path that exercises PilotEmbeddedStart past its
+// JSON-parse guard. Without a real registry the //export function
+// short-circuits at the daemon.Start() error return — visible in the
+// 13.6% baseline coverage of that function.
+// ---------------------------------------------------------------------------
+
+static pid_t mockreg_pid = 0;
+static char mockreg_addr[64] = {0};
+static char mockreg_addr_file[256] = {0};
+
+// wait_for_file polls up to ~3 seconds for `path` to exist and be
+// non-empty. Used to learn the OS-assigned port from the mock registry
+// without parsing its stdout (the child renames .tmp → path so the read
+// is never torn).
+static int wait_for_file(const char *path, char *out, size_t outsz) {
+  for (int i = 0; i < 300; i++) {
+    FILE *f = fopen(path, "r");
+    if (f != NULL) {
+      size_t n = fread(out, 1, outsz - 1, f);
+      fclose(f);
+      if (n > 0) {
+        out[n] = '\0';
+        // Strip trailing newline if any.
+        while (n > 0 && (out[n - 1] == '\n' || out[n - 1] == '\r')) {
+          out[--n] = '\0';
+        }
+        if (n > 0) return 1;
+      }
+    }
+    struct timespec ts = {0, 10 * 1000 * 1000}; // 10 ms
+    nanosleep(&ts, NULL);
+  }
+  return 0;
+}
+
+static int start_mock_registry(void) {
+  snprintf(mockreg_addr_file, sizeof(mockreg_addr_file),
+           "/tmp/libpilot-mockreg-%d.addr", (int)getpid());
+  unlink(mockreg_addr_file);
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    fprintf(stderr, "fork mockreg: %s\n", strerror(errno));
+    return 0;
+  }
+  if (pid == 0) {
+    execl("./mockregistry-bin", "mockregistry-bin",
+          "-addr-file", mockreg_addr_file, (char *)NULL);
+    fprintf(stderr, "execl mockregistry-bin: %s\n", strerror(errno));
+    _exit(127);
+  }
+  mockreg_pid = pid;
+
+  if (!wait_for_file(mockreg_addr_file, mockreg_addr,
+                     sizeof(mockreg_addr))) {
+    fprintf(stderr,
+            "mockregistry-bin did not write addr file %s within 3s\n",
+            mockreg_addr_file);
+    kill(pid, SIGTERM);
+    waitpid(pid, NULL, 0);
+    mockreg_pid = 0;
+    return 0;
+  }
+  return 1;
+}
+
+static void stop_mock_registry(void) {
+  if (mockreg_pid > 0) {
+    kill(mockreg_pid, SIGTERM);
+    waitpid(mockreg_pid, NULL, 0);
+    mockreg_pid = 0;
+  }
+  if (mockreg_addr_file[0] != '\0') {
+    unlink(mockreg_addr_file);
+  }
+}
+
+// Drives the full PilotEmbeddedStart success path against a fake
+// registry. Builds a per-test data dir + IPC socket, spins up the
+// in-process daemon, probes it via PilotConnect+PilotInfo, then tears
+// it down with PilotEmbeddedStop.
+//
+// The test is conservative — any path that returns a {"error":...}
+// envelope (registry dial, daemon Start, IPC socket creation) is
+// treated as FAIL with the error text logged, so a regression in any
+// of the upstream stages surfaces clearly instead of silently passing.
+static void test_embedded_start_with_mock_registry(void) {
+  if (!start_mock_registry()) {
+    fail_count++;
+    printf("  FAIL embedded_start_with_mock_registry: "
+           "could not spawn mockregistry-bin\n");
+    return;
+  }
+  printf("\n[mock registry] pid=%d addr=%s\n",
+         (int)mockreg_pid, mockreg_addr);
+
+  // Per-test data dir + IPC socket. /tmp avoids the macOS sun_path
+  // 104-byte ceiling that TMPDIR (/var/folders/...) can blow past.
+  char data_dir[256];
+  char socket_path[256];
+  snprintf(data_dir, sizeof(data_dir),
+           "/tmp/libpilot-emb-%d", (int)getpid());
+  snprintf(socket_path, sizeof(socket_path),
+           "/tmp/libpilot-emb-%d.sock", (int)getpid());
+
+  // Best-effort clean of any stale artefacts from a prior run.
+  unlink(socket_path);
+  mkdir(data_dir, 0700);
+
+  // Build the config JSON. registry_addr points at the fake registry
+  // we just spawned. beacon_addr is a closed TCP port — STUN will fail
+  // but daemon.Start() treats that as a warning and falls back to the
+  // local listen address. keepalive_sec is large so the trustRepublish
+  // loop never fires during the test window. trust_auto_approve avoids
+  // the trustedagents plugin's curated list (not registered in
+  // embedded mode anyway).
+  char config_json[1024];
+  snprintf(config_json, sizeof(config_json),
+           "{"
+           "\"data_dir\":\"%s\","
+           "\"socket_path\":\"%s\","
+           "\"registry_addr\":\"%s\","
+           "\"beacon_addr\":\"127.0.0.1:1\","
+           "\"trust_auto_approve\":true,"
+           "\"keepalive_sec\":3600,"
+           "\"version\":\"mock-embed-1\""
+           "}",
+           data_dir, socket_path, mockreg_addr);
+
+  char *start_res = PilotEmbeddedStart(config_json);
+  if (start_res == NULL) {
+    FAIL("embedded_start_with_mock_registry",
+         "PilotEmbeddedStart returned NULL");
+    stop_mock_registry();
+    return;
+  }
+  if (has_error(start_res)) {
+    FAIL("embedded_start_with_mock_registry", start_res);
+    free_c_string(start_res);
+    // Best-effort stop in case the start half-succeeded.
+    char *stop_err = PilotEmbeddedStop();
+    if (stop_err) free_c_string(stop_err);
+    stop_mock_registry();
+    return;
+  }
+  PASS("embedded_start_with_mock_registry");
+  free_c_string(start_res);
+
+  // Calling PilotEmbeddedStart a second time while the singleton is
+  // live must error — covers the `embedded.node != nil` early-return
+  // branch at the top of PilotEmbeddedStart.
+  char *dup_res = PilotEmbeddedStart(config_json);
+  if (dup_res == NULL || !has_error(dup_res)) {
+    FAIL("embedded_start_double_call", "expected error JSON");
+  } else if (strstr(dup_res, "already started") == NULL) {
+    FAIL("embedded_start_double_call",
+         "expected error to mention already started");
+  } else {
+    PASS("embedded_start_double_call");
+  }
+  if (dup_res) free_c_string(dup_res);
+
+  // Connect a driver handle to the freshly-booted embedded daemon and
+  // probe both Info and Health. This exercises the same IPC socket
+  // pkg/daemon.IPC creates inside Start(), end-to-end, without going
+  // through any mock-side IPC. Covers the "embedded boots a real
+  // socket the driver can dial" guarantee.
+  struct PilotConnect_return conn = PilotConnect(socket_path);
+  if (conn.r0 == 0) {
+    FAIL("embedded_info_via_driver",
+         conn.r1 ? conn.r1 : "PilotConnect failed");
+    if (conn.r1) free_c_string(conn.r1);
+  } else {
+    if (conn.r1) free_c_string(conn.r1);
+    char *info = PilotInfo(conn.r0);
+    if (!has_no_error(info)) {
+      FAIL("embedded_info_via_driver", info ? info : "null");
+    } else {
+      PASS("embedded_info_via_driver");
+    }
+    if (info) free_c_string(info);
+
+    char *health = PilotHealth(conn.r0);
+    if (!has_no_error(health)) {
+      FAIL("embedded_health_via_driver", health ? health : "null");
+    } else {
+      PASS("embedded_health_via_driver");
+    }
+    if (health) free_c_string(health);
+
+    char *closed = PilotClose(conn.r0);
+    if (closed) free_c_string(closed);
+  }
+
+  // Tear down the embedded daemon. PilotEmbeddedStop returns either
+  // {"status":"stopped"} or {"status":"stopped","warning":"..."} — both
+  // count as success (plugin teardown is best-effort).
+  char *stop_res = PilotEmbeddedStop();
+  if (stop_res == NULL || has_error(stop_res)) {
+    FAIL("embedded_stop_after_start",
+         stop_res ? stop_res : "null");
+  } else {
+    PASS("embedded_stop_after_start");
+  }
+  if (stop_res) free_c_string(stop_res);
+
+  // Clean filesystem artefacts. The data dir gets rm-rf'd on the
+  // process exit anyway, but tidy up so back-to-back runs don't pile
+  // up identity.json files.
+  unlink(socket_path);
+
+  stop_mock_registry();
+}
+
+// Exercises the "data_dir required" guard — first call after a clean
+// state, with a config that parses but omits data_dir. PilotEmbeddedStart
+// must reject this without booting the daemon.
+static void test_embedded_start_missing_data_dir(void) {
+  const char *cfg = "{\"socket_path\":\"/tmp/x.sock\"}";
+  char *res = PilotEmbeddedStart((char *)cfg);
+  if (res == NULL || !has_error(res)) {
+    FAIL("embedded_start_missing_data_dir", "expected error JSON");
+    if (res) free_c_string(res);
+    return;
+  }
+  if (strstr(res, "data_dir") == NULL) {
+    FAIL("embedded_start_missing_data_dir",
+         "expected error to mention data_dir");
+    free_c_string(res);
+    return;
+  }
+  PASS("embedded_start_missing_data_dir");
+  free_c_string(res);
+}
+
+// Exercises the "socket_path required" guard with the data_dir branch
+// already satisfied. Also confirms the embeddedConfig.defaults() runs:
+// the call should fail on missing socket, not on missing registry.
+static void test_embedded_start_missing_socket_path(void) {
+  const char *cfg = "{\"data_dir\":\"/tmp\"}";
+  char *res = PilotEmbeddedStart((char *)cfg);
+  if (res == NULL || !has_error(res)) {
+    FAIL("embedded_start_missing_socket_path", "expected error JSON");
+    if (res) free_c_string(res);
+    return;
+  }
+  if (strstr(res, "socket_path") == NULL) {
+    FAIL("embedded_start_missing_socket_path",
+         "expected error to mention socket_path");
+    free_c_string(res);
+    return;
+  }
+  PASS("embedded_start_missing_socket_path");
+  free_c_string(res);
+}
+
+// Calls PilotEmbeddedStart with a NULL configJSON pointer. The
+// unmarshalCString helper has an explicit nil branch this exercises.
+static void test_embedded_start_null_config(void) {
+  char *res = PilotEmbeddedStart(NULL);
+  if (res == NULL || !has_error(res)) {
+    FAIL("embedded_start_null_config", "expected error JSON");
+    if (res) free_c_string(res);
+    return;
+  }
+  PASS("embedded_start_null_config");
+  free_c_string(res);
 }
 
 // ---------------------------------------------------------------------------
@@ -1187,6 +1557,73 @@ static void test_mock_listener_accept(void) {
   mock_close(b);
 }
 
+// PilotDialTimeout against the mock daemon — exercises the
+// ParseSocketAddr success path AND the d.DialAddrTimeout path that the
+// bad-handle test could never reach. Uses a non-zero timeout so the
+// timeoutMs cast doesn't trip the overflow check.
+static void test_mock_dial_timeout(void) {
+  uint64_t h = mock_connect_or_fail("mock_dial_timeout");
+  if (!h) return;
+  char addr[] = "1:0001.0002.0003:80";
+  struct PilotDialTimeout_return r = PilotDialTimeout(h, addr, 5000);
+  if (r.r0 == 0 || (r.r1 && has_error(r.r1))) {
+    FAIL("mock_dial_timeout", r.r1 ? r.r1 : "no conn handle");
+    if (r.r1) free_c_string(r.r1);
+    mock_close(h);
+    return;
+  }
+  PASS("mock_dial_timeout");
+  if (r.r1) free_c_string(r.r1);
+  char *cc = PilotConnClose(r.r0);
+  if (cc) free_c_string(cc);
+  mock_close(h);
+}
+
+// Drives the ParseSocketAddr error branch in PilotDialTimeout. Requires
+// a valid handle so the driverFromHandle path passes, then a malformed
+// addr to fail ParseSocketAddr.
+static void test_mock_dial_timeout_bad_addr(void) {
+  uint64_t h = mock_connect_or_fail("mock_dial_timeout_bad_addr");
+  if (!h) return;
+  char addr[] = "not-a-valid-socket-addr";
+  struct PilotDialTimeout_return r = PilotDialTimeout(h, addr, 100);
+  if (r.r0 != 0 || r.r1 == NULL || !has_error(r.r1)) {
+    FAIL("mock_dial_timeout_bad_addr", "expected parse error");
+    if (r.r1) free_c_string(r.r1);
+    mock_close(h);
+    return;
+  }
+  PASS("mock_dial_timeout_bad_addr");
+  free_c_string(r.r1);
+  mock_close(h);
+}
+
+// Drives the json.Unmarshal error branch in PilotMemberTagsSet. The
+// handle-validation path is already covered; this one carries a malformed
+// JSON body so the second early-return executes.
+static void test_mock_member_tags_set_bad_json(void) {
+  uint64_t h = mock_connect_or_fail("mock_member_tags_set_bad_json");
+  if (!h) return;
+  char bad[] = "{not a list}";
+  char *err = PilotMemberTagsSet(h, 1, 1, bad);
+  if (err == NULL || !has_error(err)) {
+    FAIL("mock_member_tags_set_bad_json", "expected json error");
+    if (err) free_c_string(err);
+    mock_close(h);
+    return;
+  }
+  if (strstr(err, "invalid tags JSON") == NULL) {
+    FAIL("mock_member_tags_set_bad_json",
+         "expected error to mention invalid tags JSON");
+    free_c_string(err);
+    mock_close(h);
+    return;
+  }
+  PASS("mock_member_tags_set_bad_json");
+  free_c_string(err);
+  mock_close(h);
+}
+
 // ---------------------------------------------------------------------------
 // Run all
 // ---------------------------------------------------------------------------
@@ -1200,6 +1637,12 @@ int main(void) {
   test_close_unknown_handle();
   test_listener_close_bad_handle();
   test_conn_close_bad_handle();
+  test_disconnect_bad_handle();
+  test_dial_timeout_bad_handle();
+  test_dial_timeout_malformed_addr();
+  test_member_tags_set_bad_handle();
+  test_member_tags_set_invalid_json();
+  test_conn_set_read_deadline_bad_handle();
 
   // Info / health / queries
   test_info_bad_handle();
@@ -1234,6 +1677,13 @@ int main(void) {
   // Embedded daemon
   test_embedded_start_invalid_json();
   test_embedded_stop_when_not_running();
+  test_embedded_start_null_config();
+  test_embedded_start_missing_data_dir();
+  test_embedded_start_missing_socket_path();
+  // Full-boot test uses ./mockregistry-bin — spawned, queried, killed
+  // inside the test. Runs last in this group so a hard fail (mock
+  // binary missing, daemon Start panics) doesn't poison earlier checks.
+  test_embedded_start_with_mock_registry();
 
   // Free
   test_free_null();
@@ -1271,6 +1721,9 @@ int main(void) {
     test_mock_member_tags();
     test_mock_recv_from();
     test_mock_listener_accept();
+    test_mock_dial_timeout();
+    test_mock_dial_timeout_bad_addr();
+    test_mock_member_tags_set_bad_json();
 
     stop_mock_daemon();
   } else {

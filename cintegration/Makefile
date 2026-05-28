@@ -21,10 +21,11 @@ LIB := ../libpilot.$(EXT)
 COVDIR := ./covdata
 HARNESS := harness
 MOCK := mockdaemon-bin
+MOCKREG := mockregistry-bin
 
-.PHONY: build run cover clean mock-daemon
+.PHONY: build run cover clean mock-daemon mock-registry
 
-build: $(LIB) $(HARNESS) mock-daemon
+build: $(LIB) $(HARNESS) mock-daemon mock-registry
 
 $(LIB):
 	cd .. && go build -tags coverflush -cover -covermode=atomic -coverpkg=. -buildmode=c-shared -o libpilot.$(EXT) .
@@ -44,7 +45,15 @@ mock-daemon: $(MOCK)
 $(MOCK): mockdaemon/main.go mockdaemon/go.mod
 	cd mockdaemon && go build -o ../$(MOCK) .
 
-run: $(HARNESS) $(MOCK)
+# mock-registry builds a TCP fake-registry the harness spawns to back
+# PilotEmbeddedStart end-to-end: the embedded daemon dials this binary
+# instead of the production rendezvous. See mockregistry/main.go.
+mock-registry: $(MOCKREG)
+
+$(MOCKREG): mockregistry/main.go mockregistry/go.mod
+	cd mockregistry && go build -o ../$(MOCKREG) .
+
+run: $(HARNESS) $(MOCK) $(MOCKREG)
 	mkdir -p $(COVDIR)
 ifeq ($(UNAME_S),Darwin)
 	DYLD_LIBRARY_PATH=.. GOCOVERDIR=$(COVDIR) ./$(HARNESS)
@@ -60,4 +69,4 @@ cover: run
 
 clean:
 	rm -rf $(COVDIR) $(HARNESS) coverage.out
-	rm -f ../libpilot.$(EXT) ../libpilot.h $(MOCK)
+	rm -f ../libpilot.$(EXT) ../libpilot.h $(MOCK) $(MOCKREG)
