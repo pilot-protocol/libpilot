@@ -29,18 +29,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/TeoSlayer/pilotprotocol/pkg/daemon"
-	"github.com/pilot-protocol/common/driver"
 
-	"github.com/pilot-protocol/handshake"
-	"github.com/pilot-protocol/policy"
 	"github.com/pilot-protocol/runtime"
-	"github.com/pilot-protocol/skillinject"
 )
 
 type embeddedNode struct {
@@ -110,91 +105,14 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 
 	identityPath := filepath.Join(cfg.DataDir, "identity.json")
 
-	d := daemon.New(daemon.Config{
-		RegistryAddr:        cfg.RegistryAddr,
-		BeaconAddr:          cfg.BeaconAddr,
-		ListenAddr:          ":0",
-		SocketPath:          cfg.SocketPath,
-		Encrypt:             true,
-		IdentityPath:        identityPath,
-		DisableEcho:         true,
-		DisableDataExchange: true,
-		DisableEventStream:  true,
-		TrustAutoApprove:    cfg.TrustAutoApprove,
-		KeepaliveInterval:   time.Duration(cfg.KeepaliveSec) * time.Second,
-		Version:             cfg.Version,
-	})
-
-	rt := runtime.New(d.DaemonAPI())
-
-	// Minimum plugin set for handshake + datagram I/O. No
-	// trustedagents (it gates trust to a curated GitHub list and
-	// breaks ad-hoc peers), no webhook (spams retries to a stale
-	// URL on macOS dev hosts), no dataexchange/eventstream
-	// (file-system inbox; clients use SendTo/RecvFrom directly).
-	if err := rt.Register(skillinject.NewService(skillinject.Config{})); err != nil {
-		return errJSON(fmt.Errorf("register skillinject: %w", err))
-	}
-
-	policySvc := policy.NewService(runtime.NewPolicyRuntime(d.DaemonAPI()))
-	if err := rt.Register(policySvc); err != nil {
-		return errJSON(fmt.Errorf("register policy: %w", err))
-	}
-	d.RegisterPolicyManager(runtime.AsDaemonPolicyManager(policySvc.Manager()))
-
-	hsSvc := handshake.NewService(runtime.NewHandshakeRuntime(d.DaemonAPI()))
-	if err := rt.Register(hsSvc); err != nil {
-		return errJSON(fmt.Errorf("register handshake: %w", err))
-	}
-	d.RegisterHandshakeService(runtime.NewHandshakeServiceAdapter(hsSvc))
-
-	if err := rt.StartPlugins(context.Background()); err != nil {
-		return errJSON(fmt.Errorf("plugin startup: %w", err))
-	}
-	if err := d.Start(); err != nil {
-		_ = rt.StopPlugins(context.Background())
-		return errJSON(fmt.Errorf("daemon start: %w", err))
-	}
-
-	embedded.node = &embeddedNode{d: d, rt: rt}
-
-	// Wait for the IPC socket to exist before we probe Info() — Start
-	// returns once IPC is listening, but on slow simulators the file
-	// stat can race.
-	deadline := time.Now().Add(5 * time.Second)
-	for time.Now().Before(deadline) {
-		if _, err := os.Stat(cfg.SocketPath); err == nil {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-
-	// Probe Info() so callers get node_id/address/public_key in the
-	// startup response without an extra round-trip.
-	probe, err := driver.Connect(cfg.SocketPath)
-	if err != nil {
-		return okJSON(map[string]interface{}{
-			"node_id": d.NodeID(),
-			"socket":  cfg.SocketPath,
-			"warning": fmt.Sprintf("probe connect: %v", err),
-		})
-	}
-	defer probe.Close()
-	info, err := probe.Info()
-	if err != nil {
-		return okJSON(map[string]interface{}{
-			"node_id": d.NodeID(),
-			"socket":  cfg.SocketPath,
-			"warning": fmt.Sprintf("probe info: %v", err),
-		})
-	}
-
-	return okJSON(map[string]interface{}{
-		"address":    info["address"],
-		"node_id":    info["node_id"],
-		"public_key": info["public_key"],
-		"socket":     cfg.SocketPath,
-	})
+	// TODO(libpilot): the embedded daemon boot path depends on
+	// d.DaemonAPI() (TeoSlayer/pilotprotocol#155 — "satisfy daemonapi.Daemon
+	// via adapter") which has not landed on web4 main. Once #155 merges,
+	// restore the daemon.New + runtime.New + plugin registration block
+	// removed in this stub. Until then PilotEmbeddedStart returns a clear
+	// runtime error so the C ABI surface keeps compiling.
+	_ = identityPath
+	return errJSON(fmt.Errorf("embedded daemon not implemented yet — blocked on web4 #155 (daemon.DaemonAPI adapter)"))
 }
 
 // Tear down the embedded daemon and all plugins. Safe to call when
