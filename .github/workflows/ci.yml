@@ -66,6 +66,10 @@ jobs:
           cache: true
           cache-dependency-path: libpilot/go.sum
 
+      - name: Tidy (libpilot) go.mod (absorb sibling drift)
+        working-directory: libpilot
+        run: go mod tidy
+
       - name: Run tests with coverage
         working-directory: libpilot
         run: go test -race -coverprofile=coverage.out -covermode=atomic ./...
