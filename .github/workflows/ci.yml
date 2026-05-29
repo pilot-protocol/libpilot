@@ -60,6 +60,60 @@ jobs:
           repository: pilot-protocol/skillinject
           path: skillinject
 
+      - name: Checkout webhook
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/webhook
+          path: webhook
+
+      - name: Checkout eventstream
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/eventstream
+          path: eventstream
+
+      - name: Checkout dataexchange
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/dataexchange
+          path: dataexchange
+
+      - name: Checkout updater
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/updater
+          path: updater
+
+      - name: Checkout gateway
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/gateway
+          path: gateway
+
+      - name: Checkout nameserver
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/nameserver
+          path: nameserver
+
+      - name: Checkout rendezvous
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/rendezvous
+          path: rendezvous
+
+      - name: Checkout beacon
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/beacon
+          path: beacon
+
+      - name: Checkout app-store
+        uses: actions/checkout@v4
+        with:
+          repository: pilot-protocol/app-store
+          path: app-store
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.25'
