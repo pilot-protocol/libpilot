@@ -125,7 +125,7 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 		Version:             cfg.Version,
 	})
 
-	rt := runtime.New(d)
+	rt := runtime.New(d.DaemonAPI())
 
 	// Minimum plugin set for handshake + datagram I/O. No
 	// trustedagents (it gates trust to a curated GitHub list and
@@ -136,13 +136,13 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 		return errJSON(fmt.Errorf("register skillinject: %w", err))
 	}
 
-	policySvc := policy.NewService(runtime.NewPolicyRuntime(d))
+	policySvc := policy.NewService(runtime.NewPolicyRuntime(d.DaemonAPI()))
 	if err := rt.Register(policySvc); err != nil {
 		return errJSON(fmt.Errorf("register policy: %w", err))
 	}
 	d.RegisterPolicyManager(runtime.AsDaemonPolicyManager(policySvc.Manager()))
 
-	hsSvc := handshake.NewService(runtime.NewHandshakeRuntime(d))
+	hsSvc := handshake.NewService(runtime.NewHandshakeRuntime(d.DaemonAPI()))
 	if err := rt.Register(hsSvc); err != nil {
 		return errJSON(fmt.Errorf("register handshake: %w", err))
 	}
