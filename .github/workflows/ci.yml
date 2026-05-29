@@ -30,35 +30,35 @@ jobs:
           repository: pilot-protocol/common
           path: common
 
-      - name: Checkout "trustedagents"
+      - name: Checkout trustedagents
         uses: actions/checkout@v4
         with:
-          repository: pilot-protocol/"trustedagents"
-          path: "trustedagents"
+          repository: pilot-protocol/trustedagents
+          path: trustedagents
 
-      - name: Checkout "handshake"
+      - name: Checkout handshake
         uses: actions/checkout@v4
         with:
-          repository: pilot-protocol/"handshake"
-          path: "handshake"
+          repository: pilot-protocol/handshake
+          path: handshake
 
-      - name: Checkout "policy"
+      - name: Checkout policy
         uses: actions/checkout@v4
         with:
-          repository: pilot-protocol/"policy"
-          path: "policy"
+          repository: pilot-protocol/policy
+          path: policy
 
-      - name: Checkout "runtime"
+      - name: Checkout runtime
         uses: actions/checkout@v4
         with:
-          repository: pilot-protocol/"runtime"
-          path: "runtime"
+          repository: pilot-protocol/runtime
+          path: runtime
 
-      - name: Checkout "skillinject"
+      - name: Checkout skillinject
         uses: actions/checkout@v4
         with:
-          repository: pilot-protocol/"skillinject"
-          path: "skillinject"
+          repository: pilot-protocol/skillinject
+          path: skillinject
 
       - uses: actions/setup-go@v5
         with:
