@@ -140,7 +140,7 @@ jobs:
         working-directory: libpilot
         run: go tool cover -func=coverage.out | tail -20
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: coverage-libpilot
           path: libpilot/coverage.out
