@@ -718,12 +718,12 @@ func PilotPolicyGet(h C.uint64_t, networkID C.uint16_t) *C.char {
 }
 
 //export PilotPolicySet
-func PilotPolicySet(h C.uint64_t, networkID C.uint16_t, policyJSON *C.char) *C.char {
+func PilotPolicySet(h C.uint64_t, networkID C.uint16_t, policyJSON *C.char, adminToken *C.char) *C.char {
 	d, err := driverFromHandle(h)
 	if err != nil {
 		return errJSON(err)
 	}
-	r, err := d.PolicySet(uint16(networkID), []byte(C.GoString(policyJSON)))
+	r, err := d.PolicySet(uint16(networkID), []byte(C.GoString(policyJSON)), C.GoString(adminToken))
 	if err != nil {
 		return errJSON(err)
 	}
