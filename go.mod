@@ -3,7 +3,7 @@ module github.com/pilot-protocol/libpilot
 go 1.25.10
 
 require (
-	github.com/TeoSlayer/pilotprotocol v1.10.5
+	github.com/pilot-protocol/pilotprotocol v1.10.5
 	github.com/pilot-protocol/common v0.4.8
 	github.com/pilot-protocol/runtime v0.3.1
 )
@@ -17,7 +17,7 @@ require (
 	golang.org/x/sys v0.45.0 // indirect
 )
 
-replace github.com/TeoSlayer/pilotprotocol => ../web4
+replace github.com/pilot-protocol/pilotprotocol => ../web4
 
 replace github.com/pilot-protocol/common => ../common
 
