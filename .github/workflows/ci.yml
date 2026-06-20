@@ -14,102 +14,102 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout this repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           path: libpilot
 
       - name: Checkout web4
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/pilotprotocol
           path: web4
 
       - name: Checkout common
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/common
           path: common
 
       - name: Checkout trustedagents
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/trustedagents
           path: trustedagents
 
       - name: Checkout handshake
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/handshake
           path: handshake
 
       - name: Checkout policy
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/policy
           path: policy
 
       - name: Checkout runtime
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/runtime
           path: runtime
 
       - name: Checkout skillinject
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/skillinject
           path: skillinject
 
       - name: Checkout webhook
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/webhook
           path: webhook
 
       - name: Checkout eventstream
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/eventstream
           path: eventstream
 
       - name: Checkout dataexchange
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/dataexchange
           path: dataexchange
 
       - name: Checkout updater
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/updater
           path: updater
 
       - name: Checkout gateway
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/gateway
           path: gateway
 
       - name: Checkout nameserver
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/nameserver
           path: nameserver
 
       - name: Checkout rendezvous
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/rendezvous
           path: rendezvous
 
       - name: Checkout beacon
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/beacon
           path: beacon
 
       - name: Checkout app-store
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           repository: pilot-protocol/app-store
           path: app-store
