@@ -33,9 +33,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pilot-protocol/common/crypto"
+	"github.com/pilot-protocol/handshake"
 	"github.com/pilot-protocol/pilotprotocol/pkg/daemon"
-
+	"github.com/pilot-protocol/policy"
 	"github.com/pilot-protocol/runtime"
+	"github.com/pilot-protocol/trustedagents"
 )
 
 type embeddedNode struct {
@@ -105,14 +108,63 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 
 	identityPath := filepath.Join(cfg.DataDir, "identity.json")
 
-	// TODO(libpilot): the embedded daemon boot path depends on
-	// d.DaemonAPI() (TeoSlayer/pilotprotocol#155 — "satisfy daemonapi.Daemon
-	// via adapter") which has not landed on web4 main. Once #155 merges,
-	// restore the daemon.New + runtime.New + plugin registration block
-	// removed in this stub. Until then PilotEmbeddedStart returns a clear
-	// runtime error so the C ABI surface keeps compiling.
-	_ = identityPath
-	return errJSON(fmt.Errorf("embedded daemon not implemented yet — blocked on web4 #155 (daemon.DaemonAPI adapter)"))
+	d := daemon.New(daemon.Config{
+		RegistryAddr:      cfg.RegistryAddr,
+		BeaconAddr:        cfg.BeaconAddr,
+		SocketPath:        cfg.SocketPath,
+		IdentityPath:      identityPath,
+		TrustAutoApprove:  cfg.TrustAutoApprove,
+		KeepaliveInterval: time.Duration(cfg.KeepaliveSec) * time.Second,
+		Version:           cfg.Version,
+		Encrypt:           true,
+	})
+
+	dapi := d.DaemonAPI()
+	rt := runtime.New(dapi)
+
+	// Register trust + handshake plugin (mirrors cmd/daemon composition root).
+	ta := trustedagents.NewService()
+	if err := rt.Register(ta); err != nil {
+		return errJSON(fmt.Errorf("register trustedagents: %w", err))
+	}
+	d.RegisterTrustChecker(ta)
+
+	hsSvc := handshake.NewService(runtime.NewHandshakeRuntime(dapi))
+	if err := rt.Register(hsSvc); err != nil {
+		return errJSON(fmt.Errorf("register handshake: %w", err))
+	}
+	d.RegisterHandshakeService(runtime.NewHandshakeServiceAdapter(hsSvc))
+
+	policySvc := policy.NewService(runtime.NewPolicyRuntime(dapi))
+	if err := rt.Register(policySvc); err != nil {
+		return errJSON(fmt.Errorf("register policy: %w", err))
+	}
+	d.RegisterPolicyManager(runtime.AsDaemonPolicyManager(policySvc.Manager()))
+
+	startCtx := context.Background()
+	if err := rt.StartPlugins(startCtx); err != nil {
+		return errJSON(fmt.Errorf("plugin startup: %w", err))
+	}
+
+	if err := d.Start(); err != nil {
+		_ = rt.StopPlugins(startCtx)
+		return errJSON(fmt.Errorf("daemon start: %w", err))
+	}
+
+	// Build the success payload. Public key may be empty for ephemeral
+	// (no-identity) mode — callers should handle that.
+	pubKey := ""
+	if id := d.Identity(); id != nil {
+		pubKey = crypto.EncodePublicKey(id.PublicKey)
+	}
+
+	embedded.node = &embeddedNode{d: d, rt: rt}
+	return okJSON(map[string]interface{}{
+		"address":    fmt.Sprintf("%d", d.NodeID()),
+		"node_id":    d.NodeID(),
+		"public_key": pubKey,
+		"socket":     cfg.SocketPath,
+	})
 }
 
 // Tear down the embedded daemon and all plugins. Safe to call when
