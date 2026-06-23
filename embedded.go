@@ -109,14 +109,14 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 	identityPath := filepath.Join(cfg.DataDir, "identity.json")
 
 	d := daemon.New(daemon.Config{
-		RegistryAddr:     cfg.RegistryAddr,
-		BeaconAddr:       cfg.BeaconAddr,
-		SocketPath:       cfg.SocketPath,
-		IdentityPath:     identityPath,
-		TrustAutoApprove: cfg.TrustAutoApprove,
+		RegistryAddr:      cfg.RegistryAddr,
+		BeaconAddr:        cfg.BeaconAddr,
+		SocketPath:        cfg.SocketPath,
+		IdentityPath:      identityPath,
+		TrustAutoApprove:  cfg.TrustAutoApprove,
 		KeepaliveInterval: time.Duration(cfg.KeepaliveSec) * time.Second,
-		Version:          cfg.Version,
-		Encrypt:          true,
+		Version:           cfg.Version,
+		Encrypt:           true,
 	})
 
 	dapi := d.DaemonAPI()
