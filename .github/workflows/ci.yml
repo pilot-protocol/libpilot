@@ -116,7 +116,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: '1.25'
+          go-version-file: libpilot/go.mod
           cache: true
           cache-dependency-path: libpilot/go.sum
 
