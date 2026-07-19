@@ -13,6 +13,6 @@ require (
 require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/pilot-protocol/pilotprotocol v1.13.0
+	github.com/pilot-protocol/pilotprotocol v1.13.1
 	golang.org/x/sys v0.46.0 // indirect
 )
