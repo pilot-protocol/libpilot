@@ -6,10 +6,10 @@ github.com/expr-lang/expr v1.17.8 h1:W1loDTT+0PQf5YteHSTpju2qfUfNoBt4yw9+wOEU9VM
 github.com/expr-lang/expr v1.17.8/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
 github.com/pilot-protocol/common v0.5.9 h1:oCeIxMl8PtJowSU9UfSdzFXQ4s2pxxQBAitsg6P6pm8=
 github.com/pilot-protocol/common v0.5.9/go.mod h1:Ybc6f1A37s3ShoEh1nBMVL9DPyYlxvkqPTvtbxaNWg4=
-github.com/pilot-protocol/handshake v0.2.2 h1:t2z+AIoaxxfOVxciyWEa/T6y2RP0WbP5qc6zUoDwcIs=
-github.com/pilot-protocol/handshake v0.2.2/go.mod h1:LNp71o9ImbwRNOeBFCI0BmsND7oFiyJPFTd90yFzGGA=
-github.com/pilot-protocol/pilotprotocol v1.12.5 h1:6dfc15F1lJSdX+U3mSEHmSLIDqlfftUqQ22OonnC8rw=
-github.com/pilot-protocol/pilotprotocol v1.12.5/go.mod h1:zLsKLBBY62FFQM13gwmBLfNbhqdSWbW9q7vZCSaIcyQ=
+github.com/pilot-protocol/handshake v0.2.4 h1:GLzn+niMckGxSnP3SwEcsxuNaSVbppozJmDp4rCiUvI=
+github.com/pilot-protocol/handshake v0.2.4/go.mod h1:xHmeC8LeBQuJk1F9ucfJXRZ5IMJKSEhVhCL9Uw2gu7o=
+github.com/pilot-protocol/pilotprotocol v1.13.2 h1:ZZh+KQtAciX0hIxC111djs4fWCYwzbxIU0WnWoq2uKA=
+github.com/pilot-protocol/pilotprotocol v1.13.2/go.mod h1:eMkx7zGmtktfF4tlksYmLtIbP4DMKNdJITG2SGvVdbQ=
 github.com/pilot-protocol/policy v0.2.3 h1:sonEBL82oGjj1zyMQjJJ5cw+0KQdjS1sgHiLmIVWb8g=
 github.com/pilot-protocol/policy v0.2.3/go.mod h1:ALQdPalluwdzd3AbqbR+iNU5jJc/aG79n9ym0vhhF7w=
 github.com/pilot-protocol/rendezvous v0.2.5 h1:PvApwKHU2DnvK8pA6K9RAohUomZNu6vX6ccIEoTogvo=
@@ -18,5 +18,5 @@ github.com/pilot-protocol/runtime v0.3.1 h1:+W9ww0dZY/FgOBtCmIOV3w5L5Z4Upt/RIsrY
 github.com/pilot-protocol/runtime v0.3.1/go.mod h1:GfFEIji0w7H9SSNR9Wl2q72pd2OYN3PHY9Qhcbvyrqk=
 github.com/pilot-protocol/trustedagents v0.2.5 h1:zdeezxalidXanOkEcdsageyAp6jVbfhAnPumREbEZt0=
 github.com/pilot-protocol/trustedagents v0.2.5/go.mod h1:6P0pBKmjKlfiSsCbl7EAIr96LW/9RnoLzdl+rEqmN5E=
-golang.org/x/sys v0.46.0 h1:noSf2Fq6F8DBgS+LysIkx7rIExoNHJsxOAtPp4rthXw=
-golang.org/x/sys v0.46.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
+golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
+golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
