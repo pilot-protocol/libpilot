@@ -3,7 +3,7 @@ module github.com/pilot-protocol/libpilot
 go 1.25.12
 
 require (
-	github.com/pilot-protocol/common v0.5.9
+	github.com/pilot-protocol/common v0.5.10
 	github.com/pilot-protocol/handshake v0.2.4
 	github.com/pilot-protocol/pilotprotocol v1.13.2
 	github.com/pilot-protocol/policy v0.2.3
