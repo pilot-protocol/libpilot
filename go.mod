@@ -9,6 +9,7 @@ require (
 	github.com/pilot-protocol/policy v0.2.3
 	github.com/pilot-protocol/runtime v0.3.1
 	github.com/pilot-protocol/trustedagents v0.2.5
+	github.com/pilot-protocol/webhook v0.2.0
 )
 
 require (

@@ -34,11 +34,8 @@ import (
 	"time"
 
 	"github.com/pilot-protocol/common/crypto"
-	"github.com/pilot-protocol/handshake"
 	"github.com/pilot-protocol/pilotprotocol/pkg/daemon"
-	"github.com/pilot-protocol/policy"
 	"github.com/pilot-protocol/runtime"
-	"github.com/pilot-protocol/trustedagents"
 )
 
 type embeddedNode struct {
@@ -119,27 +116,12 @@ func PilotEmbeddedStart(configJSON *C.char) *C.char {
 		Encrypt:           true,
 	})
 
-	dapi := d.DaemonAPI()
-	rt := runtime.New(dapi)
+	rt := runtime.New(d.DaemonAPI())
 
-	// Register trust + handshake plugin (mirrors cmd/daemon composition root).
-	ta := trustedagents.NewService()
-	if err := rt.Register(ta); err != nil {
-		return errJSON(fmt.Errorf("register trustedagents: %w", err))
+	// Plugin set + daemon-side adapters (see plugins.go).
+	if _, err := registerEmbeddedPlugins(d, rt); err != nil {
+		return errJSON(err)
 	}
-	d.RegisterTrustChecker(ta)
-
-	hsSvc := handshake.NewService(runtime.NewHandshakeRuntime(dapi))
-	if err := rt.Register(hsSvc); err != nil {
-		return errJSON(fmt.Errorf("register handshake: %w", err))
-	}
-	d.RegisterHandshakeService(runtime.NewHandshakeServiceAdapter(hsSvc))
-
-	policySvc := policy.NewService(runtime.NewPolicyRuntime(dapi))
-	if err := rt.Register(policySvc); err != nil {
-		return errJSON(fmt.Errorf("register policy: %w", err))
-	}
-	d.RegisterPolicyManager(runtime.AsDaemonPolicyManager(policySvc.Manager()))
 
 	startCtx := context.Background()
 	if err := rt.StartPlugins(startCtx); err != nil {

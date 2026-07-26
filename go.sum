@@ -18,5 +18,7 @@ github.com/pilot-protocol/runtime v0.3.1 h1:+W9ww0dZY/FgOBtCmIOV3w5L5Z4Upt/RIsrY
 github.com/pilot-protocol/runtime v0.3.1/go.mod h1:GfFEIji0w7H9SSNR9Wl2q72pd2OYN3PHY9Qhcbvyrqk=
 github.com/pilot-protocol/trustedagents v0.2.5 h1:zdeezxalidXanOkEcdsageyAp6jVbfhAnPumREbEZt0=
 github.com/pilot-protocol/trustedagents v0.2.5/go.mod h1:6P0pBKmjKlfiSsCbl7EAIr96LW/9RnoLzdl+rEqmN5E=
+github.com/pilot-protocol/webhook v0.2.0 h1:3UFU9X2yBb0iKlPbzVcism+Z6yCrBBaOgdo9+vd4Wf4=
+github.com/pilot-protocol/webhook v0.2.0/go.mod h1:WVXhHFg+o0pHHk+4nXMCh1zl/ZAyZ3AXrtx6mNuZS6g=
 golang.org/x/sys v0.47.0 h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=
 golang.org/x/sys v0.47.0/go.mod h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=
