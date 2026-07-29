@@ -15,6 +15,6 @@ require (
 require (
 	github.com/coder/websocket v1.8.15 // indirect
 	github.com/expr-lang/expr v1.17.8 // indirect
-	github.com/pilot-protocol/rendezvous v0.2.7 // indirect
+	github.com/pilot-protocol/rendezvous v0.2.8 // indirect
 	golang.org/x/sys v0.47.0 // indirect
 )
