@@ -7,7 +7,7 @@ require (
 	github.com/pilot-protocol/handshake v0.3.3
 	github.com/pilot-protocol/pilotprotocol v1.18.0
 	github.com/pilot-protocol/policy v0.2.3
-	github.com/pilot-protocol/runtime v0.3.2
+	github.com/pilot-protocol/runtime v0.3.3
 	github.com/pilot-protocol/trustedagents v0.2.6
 	github.com/pilot-protocol/webhook v0.2.0
 )
