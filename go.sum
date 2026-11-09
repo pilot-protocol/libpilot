@@ -2,8 +2,8 @@ github.com/coder/websocket v1.8.15 h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNU
 github.com/coder/websocket v1.8.15/go.mod h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=
 github.com/expr-lang/expr v1.17.8 h1:W1loDTT+0PQf5YteHSTpju2qfUfNoBt4yw9+wOEU9VM=
 github.com/expr-lang/expr v1.17.8/go.mod h1:8/vRC7+7HBzESEqt5kKpYXxrxkr31SaO8r40VO/1IT4=
-github.com/pilot-protocol/common v0.6.1 h1:AX46gs2H+JXqrSh8w3LA3tK2U4b/OLXQztU4tWLCwHw=
-github.com/pilot-protocol/common v0.6.1/go.mod h1:OTXD84ScrBbKTAhawgFlLw9HtisgNvr83Zs1yDAuG9k=
+github.com/pilot-protocol/common v0.6.2 h1:ZKqv6L/CDDv9uINKhB/qIITVV2KhmLqox1oz8vaJ1xY=
+github.com/pilot-protocol/common v0.6.2/go.mod h1:OTXD84ScrBbKTAhawgFlLw9HtisgNvr83Zs1yDAuG9k=
 github.com/pilot-protocol/handshake v0.3.3 h1:yRSIExR0ZYsN7FeDKOyG74MuvV/Snq19sYk+puI/EN4=
 github.com/pilot-protocol/handshake v0.3.3/go.mod h1:+hTlNxhsPSRxevHrl+UnyNyd/RP7/lTkM2JpUIRUr5U=
 github.com/pilot-protocol/pilotprotocol v1.18.0 h1:WcswQVF91vWbdAxCuZv/CgmF0+x4hWkpmnTHweMTr/s=
